@@ -35,8 +35,7 @@ const FONTSET: [u8; FONTSET_SIZE as usize] = [
 pub struct Emu {
     program_counter: u16,
     ram: [u8; RAM_SIZE as usize],
-    width: u16,
-    height: u16,
+    screen : [[bool; SCREEN_WIDTH as usize] ; SCREEN_HEIGHT as usize],
     v_reg: [u16; REG_NUMBERS as usize],
     i_reg: u16,
     stack_pointer: u16,
@@ -50,8 +49,7 @@ impl Emu {
         let mut res = Emu {
             program_counter: START_ADDR,
             ram: [0; RAM_SIZE as usize],
-            width: SCREEN_WIDTH,
-            height: SCREEN_HEIGHT,
+            screen : [[false; SCREEN_WIDTH as usize] ; SCREEN_HEIGHT as usize],
             v_reg: [0; REG_NUMBERS as usize],
             i_reg: 0,
             stack_pointer: 0,
@@ -66,8 +64,7 @@ impl Emu {
     pub fn reset(&mut self) {
         self.program_counter = START_ADDR;
         self.ram = [0; RAM_SIZE as usize];
-        self.height = SCREEN_HEIGHT;
-        self.width = SCREEN_WIDTH;
+        self.screen = [[false ; SCREEN_WIDTH as usize] ; SCREEN_HEIGHT as usize];
         self.i_reg = 0;
         self.v_reg = [0; REG_NUMBERS as usize];
         self.stack_pointer = 0;
@@ -106,9 +103,11 @@ impl Emu {
         let digit1: u16 = (op & 0xF000) >> 12;
         let digit2: u16 = (op & 0x0F00) >> 8;
         let digit3: u16 = (op & 0x00F0) >> 4;
-        let digit4: u16 =  op & 0x000F ;
+        let digit4: u16 = op & 0x000F;
 
         match (digit1, digit2, digit3, digit4) {
+            (0, 0, 0, 0) => return,
+            (0, 0, 0xE, 0) => self.screen = [[false ; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize],
             (_, _, _, _) => unimplemented!("DIDNT IMPL"),
         }
     }
