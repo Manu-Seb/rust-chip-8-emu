@@ -361,4 +361,18 @@ impl Emu {
             self.delay_timer -= 1;
         }
     }
+
+    pub fn get_display(&self) -> &[bool] {
+        &self.screen
+    }
+
+    pub fn keypress(&mut self, idx: usize, pressed: bool) {
+        self.keys[idx] = pressed;
+    }
+
+    pub fn load(&mut self, data: &[u8]) {
+        let start_idx = START_ADDR as usize;
+        let end_idx = START_ADDR as usize + data.len();
+        self.ram[start_idx..end_idx].copy_from_slice(data);
+    }
 }
