@@ -1,3 +1,5 @@
+use rand::random;
+
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }
@@ -35,8 +37,8 @@ const FONTSET: [u8; FONTSET_SIZE as usize] = [
 pub struct Emu {
     program_counter: u16,
     ram: [u8; RAM_SIZE as usize],
-    screen : [[bool; SCREEN_WIDTH as usize] ; SCREEN_HEIGHT as usize],
-    v_reg: [u16; REG_NUMBERS as usize],
+    screen: [bool; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize],
+    v_reg: [u8; REG_NUMBERS as usize],
     i_reg: u16,
     stack_pointer: u16,
     stack: [u16; STACK_SIZE as usize],
@@ -49,7 +51,7 @@ impl Emu {
         let mut res = Emu {
             program_counter: START_ADDR,
             ram: [0; RAM_SIZE as usize],
-            screen : [[false; SCREEN_WIDTH as usize] ; SCREEN_HEIGHT as usize],
+            screen: [false; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize],
             v_reg: [0; REG_NUMBERS as usize],
             i_reg: 0,
             stack_pointer: 0,
@@ -64,7 +66,7 @@ impl Emu {
     pub fn reset(&mut self) {
         self.program_counter = START_ADDR;
         self.ram = [0; RAM_SIZE as usize];
-        self.screen = [[false ; SCREEN_WIDTH as usize] ; SCREEN_HEIGHT as usize];
+        self.screen = [[false; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize];
         self.i_reg = 0;
         self.v_reg = [0; REG_NUMBERS as usize];
         self.stack_pointer = 0;
@@ -107,7 +109,170 @@ impl Emu {
 
         match (digit1, digit2, digit3, digit4) {
             (0, 0, 0, 0) => return,
-            (0, 0, 0xE, 0) => self.screen = [[false ; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize],
+            (0, 0, 0xE, 0) => {
+                self.screen = [[false; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize]
+            }
+            (0, 0, 0xE, 0xE) => {
+                let return_addr = self.pop();
+                self.program_counter = return_addr;
+            }
+            (1, _, _, _) => {
+                let nnn = op & 0x0FFF;
+                self.program_counter = nnn;
+            }
+            (2, _, _, _) => {
+                self.push(self.program_counter);
+                let nnn = op & 0x0FFF;
+                self.program_counter = nnn;
+            }
+            (3, _, _, _) => {
+                let x = digit2;
+                let nn = (op & 0xFF) as u8;
+                if self.v_reg[x as usize] == nn {
+                    self.program_counter += 2;
+                }
+            }
+            (4, _, _, _) => {
+                let x = digit2;
+                let nn = (op & 0xFF) as u8;
+                if self.v_reg[x as usize] != nn {
+                    self.program_counter += 2;
+                }
+            }
+            (5, _, _, 0) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                if self.v_reg[x] == self.v_reg[y] {
+                    self.program_counter += 2;
+                }
+            }
+            (6, _, _, _) => {
+                let x = digit2 as usize;
+                let nn = (op & 0xFF) as u8;
+                self.v_reg[x] = nn;
+            }
+            (7, _, _, _) => {
+                let x = digit2 as usize;
+                let nn = (op & 0xFF) as u8;
+                self.v_reg[x] += nn;
+            }
+            (8, _, _, 0) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] = self.v_reg[y];
+            }
+            (8, _, _, 1) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] |= self.v_reg[y];
+            }
+            (8, _, _, 2) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] &= self.v_reg[y];
+            }
+            (8, _, _, 3) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] ^= self.v_reg[y];
+            }
+            //adding from register y to register x
+            //Store value of the carry to the last register
+            (8, _, _, 4) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                let (new_vf, carry) = self.v_reg[x].overflowing_add(self.v_reg[y]);
+                let new_f = if carry { 1 } else { 0 };
+                self.v_reg[x] = new_vf;
+                self.v_reg[0xF] = new_f;
+            }
+            //similiar but with sub
+            (8, _, _, 5) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                let (new_vf, borrow) = self.v_reg[x].overflowing_sub(self.v_reg[y]);
+                let new_f = if borrow { 0 } else { 1 };
+                self.v_reg[x] = new_vf;
+                self.v_reg[0xF] = new_f;
+            }
+            //for bitshift
+            (8, _, _, 6) => {
+                let x = digit2 as usize;
+                let lsb = self.v_reg[x] & 1;
+                self.v_reg[x] >>= 1;
+                self.v_reg[0xF] = lsb;
+            }
+            (8, _, _, 7) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                let (new_vf, borrow) = self.v_reg[y].overflowing_sub(self.v_reg[x]);
+                let new_f = if borrow { 0 } else { 1 };
+                self.v_reg[x] = new_vf;
+                self.v_reg[0xF] = new_f;
+            }
+            (8, _, _, 0xE) => {
+                let x = digit2 as usize;
+                let lsb = self.v_reg[x] & 1;
+                self.v_reg[x] <<= 1;
+                self.v_reg[0xF] = lsb;
+            }
+            (9, _, _, 0) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                if self.v_reg[x] != self.v_reg[y] {
+                    self.program_counter += 2;
+                }
+            }
+            (0xA, _, _, _) => {
+                let nnn = op & 0xFFF;
+                self.i_reg = nnn;
+            }
+            (0xB, _, _, _) => {
+                let nnn = op & 0xFFF;
+                self.program_counter = (self.v_reg[0] as u16) + nnn;
+            }
+            (0xC, _, _, _) => {
+                let x = digit2;
+                let nn = (op & 0xFF) as u8;
+                let rng: u8 = random();
+                self.v_reg[x as usize] = rng & nn;
+            }
+            //DRAW
+            (0xD, _, _, _) => {
+                let x_coord = digit2;
+                let y_coord = digit3;
+                let num_rows = digit4;
+
+                let mut flipped = false;
+
+                for y_line in 0..num_rows {
+                    let addr = (self.i_reg + y_line) as u16;
+                    let pixels = self.ram[addr as usize];
+
+                    for x_line in 0..8 {
+                        if (pixels & (0b1000_0000 >> x_line)) != 0 {
+                            let x = (x_coord + x_line) % SCREEN_WIDTH;
+                            let y = (y_coord + y_line) % SCREEN_HEIGHT;
+                            let idx = x + SCREEN_WIDTH * y;
+
+                            flipped |= self.screen[idx as usize];
+                            self.screen[idx as usize] ^= true;
+                        }
+                    }
+                }
+
+                if flipped {
+                    self.v_reg[0xF] = 1;
+                } else {
+                    self.v_reg[0xF] = 0;
+                }
+            }
+            (0xE, _, 9, 0xE) => {
+                let x = digit2;
+                let nn = (op & 0xFF) as u8;
+                let rng: u8 = random();
+                self.v_reg[x as usize] = rng & nn;
+            }
             (_, _, _, _) => unimplemented!("DIDNT IMPL"),
         }
     }
