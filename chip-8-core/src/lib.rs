@@ -9,6 +9,7 @@ const FONTSET_SIZE: u32 = 80;
 
 const REG_NUMBERS: u32 = 16;
 const STACK_SIZE: u16 = 16;
+const NUM_KEYS: u16 = 16;
 
 const START_ADDR: u16 = 0x200;
 
@@ -42,8 +43,9 @@ pub struct Emu {
     i_reg: u16,
     stack_pointer: u16,
     stack: [u16; STACK_SIZE as usize],
-    delay_timer: u16,
-    sound_timer: u16,
+    keys: [bool; NUM_KEYS as usize],
+    delay_timer: u8,
+    sound_timer: u8,
 }
 
 impl Emu {
@@ -56,6 +58,7 @@ impl Emu {
             i_reg: 0,
             stack_pointer: 0,
             stack: [0; STACK_SIZE as usize],
+            keys: [false; NUM_KEYS as usize],
             delay_timer: 0,
             sound_timer: 0,
         };
@@ -66,7 +69,7 @@ impl Emu {
     pub fn reset(&mut self) {
         self.program_counter = START_ADDR;
         self.ram = [0; RAM_SIZE as usize];
-        self.screen = [[false; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize];
+        self.screen = [false; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize];
         self.i_reg = 0;
         self.v_reg = [0; REG_NUMBERS as usize];
         self.stack_pointer = 0;
@@ -109,9 +112,7 @@ impl Emu {
 
         match (digit1, digit2, digit3, digit4) {
             (0, 0, 0, 0) => return,
-            (0, 0, 0xE, 0) => {
-                self.screen = [[false; SCREEN_WIDTH as usize]; SCREEN_HEIGHT as usize]
-            }
+            (0, 0, 0xE, 0) => self.screen = [false; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize],
             (0, 0, 0xE, 0xE) => {
                 let return_addr = self.pop();
                 self.program_counter = return_addr;
@@ -269,9 +270,81 @@ impl Emu {
             }
             (0xE, _, 9, 0xE) => {
                 let x = digit2;
-                let nn = (op & 0xFF) as u8;
-                let rng: u8 = random();
-                self.v_reg[x as usize] = rng & nn;
+                let vx = self.v_reg[x as usize];
+                if self.keys[vx as usize] {
+                    self.program_counter += 2;
+                }
+            }
+            (0xE, _, 9, 0xA) => {
+                let x = digit2;
+                let vx = self.v_reg[x as usize];
+                if !self.keys[vx as usize] {
+                    self.program_counter += 2;
+                }
+            }
+            (0xF, _, 0, 7) => {
+                let x = digit2;
+                self.v_reg[x as usize] = self.delay_timer;
+            }
+            (0xF, _, 0, 0xA) => {
+                let x = digit2;
+                let mut pressed = false;
+                for i in 0..self.keys.len() {
+                    if self.keys[i as usize] {
+                        self.v_reg[x as usize] = i as u8;
+                        pressed = true;
+                    }
+                }
+                if !pressed {
+                    self.program_counter -= 2;
+                }
+            }
+            (0xF, _, 1, 5) => {
+                let x = digit2;
+                self.delay_timer = self.v_reg[x as usize];
+            }
+            (0xF, _, 1, 8) => {
+                let x = digit2;
+                self.sound_timer = self.v_reg[x as usize];
+            }
+            (0xF, _, 1, 0xE) => {
+                let x = digit2;
+                let vx = self.v_reg[x as usize] as u16;
+
+                self.i_reg = self.i_reg.wrapping_add(vx);
+            }
+            (0xF, _, 2, 9) => {
+                let x = digit2 as usize;
+                let c = self.v_reg[x] as u16;
+                //because we store int he begining of the ram and also because each font is 5 bits
+                //long
+                self.i_reg = c * 5;
+            }
+            (0xF, _, 3, 3) => {
+                let x = digit2 as usize;
+                let vx = self.v_reg[x] as f32;
+
+                let hundreths = (vx / 100.0).floor() as u8;
+                let tenths = ((vx / 10.0) % 10.0).floor() as u8;
+                let ones = (vx % 10.0).floor() as u8;
+
+                self.ram[self.i_reg as usize] = hundreths;
+                self.ram[(self.i_reg + 1) as usize] = tenths;
+                self.ram[(self.i_reg + 2) as usize] = ones;
+            }
+            (0xF, _, 5, 5) => {
+                let x = digit2 as usize;
+                let idx = self.i_reg as usize;
+                for i in 0..idx {
+                    self.ram[idx + i] = self.v_reg[i];
+                }
+            }
+            (0xF, _, 6, 5) => {
+                let x = digit2 as usize;
+                let idx = self.i_reg as usize;
+                for i in 0..idx {
+                    self.v_reg[i] = self.ram[idx + i];
+                }
             }
             (_, _, _, _) => unimplemented!("DIDNT IMPL"),
         }
