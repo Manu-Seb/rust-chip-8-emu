@@ -1,15 +1,6 @@
 Yet another CHIP-8 emulator written in **Rust**, using **SDL2** for graphics and input.
 
 
-
-```
-.
-├── chip-8-core/      # Emulator core (CPU, memory, opcodes)
-├── frontend/         # SDL2-based frontend (window, input, render loop)
-├── roms/             # CHIP-8 ROMs (not included)
-└── README.md
-```
-
 * `chip-8-core` is platform-agnostic and reusable
 * `frontend` handles SDL2 rendering and keyboard mapping
 
