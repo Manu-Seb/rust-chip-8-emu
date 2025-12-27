@@ -1,8 +1,4 @@
-use rand::random;
-
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+use rand::{Rng, random};
 
 const RAM_SIZE: u32 = 4096;
 const FONTSET_SIZE: u32 = 80;
@@ -13,8 +9,8 @@ const NUM_KEYS: u16 = 16;
 
 const START_ADDR: u16 = 0x200;
 
-const SCREEN_HEIGHT: u16 = 32;
-const SCREEN_WIDTH: u16 = 64;
+pub const SCREEN_HEIGHT: usize = 32;
+pub const SCREEN_WIDTH: usize = 64;
 
 const FONTSET: [u8; FONTSET_SIZE as usize] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -155,7 +151,7 @@ impl Emu {
             (7, _, _, _) => {
                 let x = digit2 as usize;
                 let nn = (op & 0xFF) as u8;
-                self.v_reg[x] += nn;
+                self.v_reg[x] = self.v_reg[x].wrapping_add(nn);
             }
             (8, _, _, 0) => {
                 let x = digit2 as usize;
@@ -213,9 +209,9 @@ impl Emu {
             }
             (8, _, _, 0xE) => {
                 let x = digit2 as usize;
-                let lsb = self.v_reg[x] & 1;
+                let msb = (self.v_reg[x] >> 7) & 1;
                 self.v_reg[x] <<= 1;
-                self.v_reg[0xF] = lsb;
+                self.v_reg[0xF] = msb;
             }
             (9, _, _, 0) => {
                 let x = digit2 as usize;
@@ -235,13 +231,14 @@ impl Emu {
             (0xC, _, _, _) => {
                 let x = digit2;
                 let nn = (op & 0xFF) as u8;
-                let rng: u8 = random();
-                self.v_reg[x as usize] = rng & nn;
+                let mut rng = rand::rng();
+                let random_value: u8 = rng.random_range(0..255);
+                self.v_reg[x as usize] = random_value & nn;
             }
             //DRAW
             (0xD, _, _, _) => {
-                let x_coord = digit2;
-                let y_coord = digit3;
+                let x_coord = self.v_reg[digit2 as usize] as u16;
+                let y_coord = self.v_reg[digit3 as usize] as u16;
                 let num_rows = digit4;
 
                 let mut flipped = false;
@@ -252,9 +249,9 @@ impl Emu {
 
                     for x_line in 0..8 {
                         if (pixels & (0b1000_0000 >> x_line)) != 0 {
-                            let x = (x_coord + x_line) % SCREEN_WIDTH;
-                            let y = (y_coord + y_line) % SCREEN_HEIGHT;
-                            let idx = x + SCREEN_WIDTH * y;
+                            let x = (x_coord + x_line) % SCREEN_WIDTH as u16;
+                            let y = (y_coord + y_line) % SCREEN_HEIGHT as u16;
+                            let idx = x + SCREEN_WIDTH as u16 * y;
 
                             flipped |= self.screen[idx as usize];
                             self.screen[idx as usize] ^= true;
@@ -275,7 +272,7 @@ impl Emu {
                     self.program_counter += 2;
                 }
             }
-            (0xE, _, 9, 0xA) => {
+            (0xE, _, 0xA, 1) => {
                 let x = digit2;
                 let vx = self.v_reg[x as usize];
                 if !self.keys[vx as usize] {
@@ -293,6 +290,7 @@ impl Emu {
                     if self.keys[i as usize] {
                         self.v_reg[x as usize] = i as u8;
                         pressed = true;
+                        break;
                     }
                 }
                 if !pressed {
@@ -335,16 +333,18 @@ impl Emu {
             (0xF, _, 5, 5) => {
                 let x = digit2 as usize;
                 let idx = self.i_reg as usize;
-                for i in 0..idx {
+                for i in 0..=x {
                     self.ram[idx + i] = self.v_reg[i];
                 }
+                // self.i_reg += (x as u16) + 1;
             }
             (0xF, _, 6, 5) => {
                 let x = digit2 as usize;
                 let idx = self.i_reg as usize;
-                for i in 0..idx {
+                for i in 0..=x {
                     self.v_reg[i] = self.ram[idx + i];
                 }
+                // self.i_reg += (x as u16) + 1;
             }
             (_, _, _, _) => unimplemented!("DIDNT IMPL"),
         }
@@ -358,7 +358,7 @@ impl Emu {
             if self.sound_timer == 1 {
                 println!("BEEP");
             }
-            self.delay_timer -= 1;
+            self.sound_timer -= 1;
         }
     }
 
