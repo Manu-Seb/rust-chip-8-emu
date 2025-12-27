@@ -1,5 +1,6 @@
 use chip_8_core::*;
-use sdl2::event::Event;
+use sdl2::{event::Event, pixels::Color, rect::Rect, render::Canvas, video::Window};
+
 use std::{env, fs};
 
 const SCALE: u32 = 15;
@@ -7,7 +8,7 @@ const WINDOW_WIDTH: u32 = (SCREEN_WIDTH as u32) * SCALE;
 const WINDOW_HEIGHT: u32 = (SCREEN_HEIGHT as u32) * SCALE;
 
 fn main() {
-    let args: Vec<_> = env::args().collect();
+    let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         println!("Please do cargo run path/to/game");
         return;
@@ -37,9 +38,30 @@ fn main() {
                 _ => (),
             }
         }
+        emulator.tick();
+        draw_screen(&emulator, &mut canvas);
     }
 }
 
 fn read_rom(emulator: &mut Emu, filepath: &str) {
     let file: Vec<u8> = fs::read(filepath).unwrap();
+    emulator.load(&file);
+}
+
+fn draw_screen(emulator: &Emu, canvas: &mut Canvas<Window>) {
+    canvas.set_draw_color(Color::RGB(0, 0, 0));
+    canvas.clear();
+
+    canvas.set_draw_color(Color::RGB(255, 255, 255));
+
+    for (i, pixel) in emulator.get_display().iter().enumerate() {
+        if *pixel {
+            let x = (i % SCREEN_WIDTH as usize) as i32;
+            let y = (i / SCREEN_WIDTH as usize) as i32;
+
+            let rect = Rect::new(x * SCALE as i32, y * SCALE as i32, SCALE, SCALE);
+            canvas.fill_rect(rect).unwrap();
+        }
+    }
+    canvas.present();
 }
